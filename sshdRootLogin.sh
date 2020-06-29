@@ -88,6 +88,7 @@ main(){
 
     needToChangeNo[0]=$PermitEmptyPasswords
     needToChangeNo[1]=$changeResponseAuthentication
+    needToChangeNo[2]=$StrictModes
 
     modify_sshd_config_yes "${needToChangeYes[@]}"
     modify_sshd_config_no "${needToChangeNo[@]}"
