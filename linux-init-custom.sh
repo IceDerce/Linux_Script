@@ -242,9 +242,10 @@ EOF
 installZSH(){
     installDemandSoftwares zsh git || return $?
     # 脚本会自动更换默认的shell
-    echo y | sh -c "$(curl -fsSL https://cdn.jsdelivr.net/gh/robbyrussell/oh-my-zsh@master/tools/install.sh)"
+    wget https://cdn.jsdelivr.net/gh/robbyrussell/oh-my-zsh@master/tools/install.sh && chmod +x install.sh 
+    echo y | bash ./install.sh
     if [[ $? -eq 0 ]]; then
-        # chsh -s /bin/zsh
+        chsh -s /bin/zsh
         sed -i "s/robbyrussell/agnoster/g" ~/.zshrc
         sed  -i 's/# DISABLE_AUTO_UPDATE="true"/DISABLE_AUTO_UPDATE="true"/' ~/.zshrc
         source ~/.zshrc
