@@ -243,11 +243,11 @@ installZSH(){
     installDemandSoftwares zsh git || return $?
     # 脚本会自动更换默认的shell
     wget https://cdn.jsdelivr.net/gh/robbyrussell/oh-my-zsh@master/tools/install.sh && chmod +x install.sh 
-    echo y | bash ./install.sh
+    bash ./install.sh
     if [[ $? -eq 0 ]]; then
-        chsh -s /bin/zsh
+        # chsh -s /bin/zsh
         sed -i "s/robbyrussell/agnoster/g" ~/.zshrc
-        sed  -i 's/# DISABLE_AUTO_UPDATE="true"/DISABLE_AUTO_UPDATE="true"/' ~/.zshrc
+        sed  -i 's/# DISABLE_AUTO_UPDATE="true"/DISABLE_AUTO_UPDATE="true"/g' ~/.zshrc
         source ~/.zshrc
         colorEcho ${BLUE} "zsh 安装成功，已更换主题，禁止更新，尽情享用~~~"
     else
