@@ -1,11 +1,19 @@
 #!/bin/bash
 
 
-# CLI arguments
-Info_font_prefix="\033[32m" && Error_font_prefix="\033[31m" && Info_background_prefix="\033[42;37m" && Error_background_prefix="\033[41;37m" && Font_suffix="\033[0m"
-systemd=true
+#########color code#############
+RED="31m"      # Error message
+GREEN="32m"    # Success message
+YELLOW="33m"   # Warning message
+BLUE="36m"     # Info message
+
+SYSTEMCTL_CMD=$(command -v systemctl &>/dev/null)
+SERVICE_CMD=$(command -v service &>/dev/null)
 
 sshConfigFile="/etc/ssh/sshd_config"
+
+### SSH的登录端口修改
+SSHLoginPort="10000"
 
 ## 下面的应该被改成yes
 PermitRootLogin="PermitRootLogin"
@@ -17,12 +25,27 @@ changeResponseAuthentication="ChallengeResponseAuthentication"
 PermitEmptyPasswords="PermitEmptyPasswords"
 StrictModes="StrictModes"
 
+###############color echo func#################
+colorEcho(){
+    echo -e "\033[${1}${@:2}\033[0m" 1>& 2
+}
+
 check_root(){
-	[[ $EUID != 0 ]] && echo -e "${Error} 当前非ROOT账号(或没有ROOT权限)，无法继续操作，请更换ROOT账号或使用 ${Green_background_prefix}sudo su${Font_color_suffix} 命令获取临时ROOT权限（执行后可能会提示输入当前账号的密码）。" && exit 1
+	if [[ $EUID != 0 ]];then
+    colorEcho ${RED} "当前非root账号(或没有root权限)，无法继续操作，请更换root账号!"
+    colorEcho ${YELLOW} "使用sudo -命令获取临时root权限（执行后可能会提示输入root密码）"
+    exit 1
+    fi
 }
 
 back_up_config(){
-    cp $sshConfigFile $sshConfigFile.backup
+    if [ -a $sshConfigFile.backup ] 
+    then
+        colorEcho ${BLUE} "sshd的备份文件已存在，无需备份。"
+    else
+        cp $sshConfigFile $sshConfigFile.backup
+        colorEcho ${GREEN} "sshd.config文件备份成功！！"
+    fi
 }
 
 modify_sshd_config_yes(){
@@ -72,12 +95,7 @@ modify_sshd_config_no(){
     done
 }
 
-
-main(){
-    # 首先检查是否拥有root权限
-    check_root
-    # 备份一份sshd的配置文件
-    back_up_config
+modify_sshd_config(){
 
     declare -a needToChangeYes
     declare -a needToChangeNo
@@ -90,11 +108,64 @@ main(){
     needToChangeNo[1]=$changeResponseAuthentication
     needToChangeNo[2]=$StrictModes
 
+    #  以数组的方式 将参数传入函数
     modify_sshd_config_yes "${needToChangeYes[@]}"
     modify_sshd_config_no "${needToChangeNo[@]}"
-    
-    systemctl restart sshd
-    if [ $? ];then echo "sshd文件已经修改成功，可以进行root登录，请修改root密码！！";else echo "sshd服务重启失败，请检查原因";fi
+}
+
+restartSSHDService(){
+    check_success(){
+        if [[ $1 -eq 0 ]]
+        then 
+            colorEcho ${BLUE} "sshd.service服务已经重启完成！"
+            colorEcho ${GREEN} "sshd文件已经修改成功，可以进行root登录，请修改root密码~~"
+        else 
+            colorEcho ${RED} "sshd服务重启失败，请检查原因!!!"
+        fi
+    }
+
+    if [[ ${SYSTEMCTL_CMD} -eq 0 ]] 
+    then
+        systemctl restart sshd.service
+        check_success $?
+    elif [[ ${SERVICE_CMD} -eq 0 ]]
+    then
+        service restart sshd.service
+        check_success $?
+    else
+        colorEcho ${RED} "缺少systemctl和service，本脚本不支持！！！"
+        return 23
+    fi
+}
+
+changeSSHLoginPort(){
+    if grep -xw "Port ${SSHLoginPort}" $sshConfigFile &>/dev/null
+    then
+        colorEcho ${BLUE} "当前的ssh登录端口已经为${SSHLoginPort}，无需修改！"
+    else
+        sed -i '/^#Port 22/a Port 10000' $sshConfigFile
+        if [[ $? -eq 0 ]] 
+        then
+            colorEcho ${GREEN} "ssh的登陆端口已被修改为10000，请修改防火墙以开放该端口！！"
+        fi
+    fi
+}
+
+main(){
+    # 首先检查是否拥有root权限
+    check_root
+
+    # 备份一份sshd的配置文件
+    back_up_config
+
+    # 使用函数修改一些配置
+    modify_sshd_config
+
+    # 增加访问端口改变
+    changeSSHLoginPort
+
+    # 重启SSHD服务
+    restartSSHDService    
 }
 
 main
