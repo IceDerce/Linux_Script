@@ -344,7 +344,7 @@ main() {
     commonToolInstall
 
     # 安装docker，版本信息在本脚本的开头处修改~~
-    #installDocker || return $?
+    installDocker || return $?
     changeDockerRegisterMirror || return $?
 
     # installKubernetes
