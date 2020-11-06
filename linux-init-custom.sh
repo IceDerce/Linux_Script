@@ -2,13 +2,19 @@
 
 # 本脚本意在一键初始化Linux服务器的环境
 
+### 需要修改以下的内容  ###
+KUBERNETES_VERSION=1.18.9
+DOCKER_VERSION=19.03.8
+### 需要修改以上的内容  ###
+
+
 CMD_INSTALL=""
 CMD_UPDATE=""
 CMD_REMOVE=""
 SOFTWARE_UPDATED=0
 
-SYSTEMCTL_CMD=$(command -v systemctl 2>/dev/null)
-SERVICE_CMD=$(command -v service 2>/dev/null)
+SYSTEMCTL_CMD=$(command -v systemctl &>/dev/null)
+SERVICE_CMD=$(command -v service &>/dev/null)
 
 #######第一种方法########
 RED="31m"    # Error message
@@ -153,9 +159,11 @@ disableSwap() {
     cat /etc/fstab_bak | grep -v swap >/etc/fstab
 }
 
-## 修改系统的配置文件
+## 安装kubernetes时，修改系统的配置文件
 modifySYSCTL() {
-    cat >>/etc/sysctl.conf <<EOF
+
+     ## 配置内核参数
+    cat >>/etc/sysctl.d/k8s.conf <<EOF
 net.ipv4.ip_forward = 1
 net.bridge.bridge-nf-call-ip6tables = 1
 net.bridge.bridge-nf-call-iptables = 1
@@ -164,14 +172,16 @@ net.ipv6.conf.default.disable_ipv6 = 1
 net.ipv6.conf.lo.disable_ipv6 = 1
 net.ipv6.conf.all.forwarding = 1
 EOF
+
     ## 执行命令以应用
-    sysctl -p
+    sysctl -p /etc/sysctl.d/k8s.conf
+
     ## 修改docker Cgroup Driver为systemd
     sed -i "s#^ExecStart=/usr/bin/dockerd.*#ExecStart=/usr/bin/dockerd -H fd:// --containerd=/run/containerd/containerd.sock --exec-opt native.cgroupdriver=systemd#g" /usr/lib/systemd/system/docker.service
     
-    # systemctl daemon-reload
-    # systemctl restart docker
-    # systemctl enable kubelet && systemctl start kubelet
+    systemctl daemon-reload
+    systemctl restart docker
+    systemctl enable kubelet && systemctl start kubelet
 }
 
 installDocker() {
@@ -184,6 +194,7 @@ installDocker() {
 
     ## 安装docker的依赖
     installDemandSoftwares yum-utils device-mapper-persistent-data lvm2 || return $?
+    
     ## 添加docker的yum源
     yum-config-manager --add-repo https://mirrors.ustc.edu.cn/docker-ce/linux/centos/docker-ce.repo
     if [[ -f /etc/yum.repos.d/docker-ce.repo ]] 
@@ -194,7 +205,7 @@ installDocker() {
     fi
     
 
-    installDemandSoftwares docker-ce-19.03.8 docker-ce-cli-19.03.8 containerd.io || return $?
+    installDemandSoftwares docker-ce-${DOCKER_VERSION} docker-ce-cli-${DOCKER_VERSION} containerd.io || return $?
 
     systemctl enable docker.service
     systemctl start docker.service
@@ -234,22 +245,20 @@ gpgkey=http://mirrors.aliyun.com/kubernetes/yum/doc/yum-key.gpg
       http://mirrors.aliyun.com/kubernetes/yum/doc/rpm-package-key.gpg
 EOF
 
-    # 指定安装的Kubernetes版本为1.18.9
-    export KUBERNETES_VERSION=1.18.9
     installDemandSoftwares kubelet-${KUBERNETES_VERSION} kubeadm-${KUBERNETES_VERSION} kubectl-${KUBERNETES_VERSION} || return $?
 }
 
 installZSH(){
     installDemandSoftwares zsh git || return $?
     # 脚本会自动更换默认的shell
-    wget https://cdn.jsdelivr.net/gh/robbyrussell/oh-my-zsh@master/tools/install.sh && chmod +x install.sh 
-    bash ./install.sh
+    echo y | sh -c "$(curl -fsSL https://cdn.jsdelivr.net/gh/robbyrussell/oh-my-zsh@master/tools/install.sh)"
+
     if [[ $? -eq 0 ]]; then
-        # chsh -s /bin/zsh
+        chsh -s /bin/zsh
         sed -i "s/robbyrussell/agnoster/g" ~/.zshrc
-        sed  -i 's/# DISABLE_AUTO_UPDATE="true"/DISABLE_AUTO_UPDATE="true"/g' ~/.zshrc
+        sed -i 's/^# DISABLE_AUTO_UPDATE="true"/DISABLE_AUTO_UPDATE="true"/g' ~/.zshrc
         source ~/.zshrc
-        colorEcho ${BLUE} "zsh 安装成功，已更换主题，禁止更新，尽情享用~~~"
+        colorEcho ${GREEN} "zsh 安装成功，已更换主题，禁止更新，尽情享用~~~"
     else
         colorEcho ${RED} "zsh 安装失败，请手动安装！！"
         return 1
@@ -305,6 +314,23 @@ changeTimeZoneAndNTP(){
     fi
 }
 
+## 为了本脚本能够满足Ubuntu系统，做出设当的更改
+commonToolInstall(){
+    colorEcho ${GREEN} "当前系统的发行版为${linuxRelease}！！"
+    colorEcho ${GREEN} "当前系统的发行版为${linuxRelease}！！"
+    colorEcho ${GREEN} "当前系统的发行版为${linuxRelease}！！"
+
+    if [[ ${linuxRelease} = "centos" ]]
+    then
+        centosCommonTool=(deltarpm net-tools iputils bind-utils lsof curl wget)
+        installDemandSoftwares ${centosCommonTool[@]} || return $?
+    elif [[ ${linuxRelease} = "ubuntu" ]] || [[ ${linuxRelease} = "debian" ]] 
+    then
+        ubuntuCommonTool=(iputils-ping net-tools dnsutils lsof curl wget mtr-tiny)
+        installDemandSoftwares ${ubuntuCommonTool[@]} || return $?
+    fi
+}
+
 main() {
     check_root 
     check_sys
@@ -314,11 +340,11 @@ main() {
     # disableSwap
 
     # 安装一些常用的小工具
-    installDemandSoftwares net-tools iputils bind-utils lsof curl wget deltarpm lrzsz || return $?
+    commonToolInstall
 
-    # 安装docker-19.03.8
-    # installDocker || return $?
-    # changeDockerRegisterMirror || return $?
+    # 安装docker，版本信息在本脚本的开头处修改~~
+    installDocker || return $?
+    changeDockerRegisterMirror || return $?
 
     # installKubernetes
     # installDockerCompose || return $?
@@ -327,8 +353,10 @@ main() {
     installZSH || return $?
     # 使用chrony进行NTP时间同步
     # changeTimeSyncToNTP || return $?
+    
     # 使用timedatactl修改时间与时区
     changeTimeZoneAndNTP || return $?
 }
 
 main
+
