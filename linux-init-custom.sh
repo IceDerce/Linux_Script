@@ -12,6 +12,7 @@ CMD_INSTALL=""
 CMD_UPDATE=""
 CMD_REMOVE=""
 SOFTWARE_UPDATED=0
+LinuxReleaseVersion=""
 
 SYSTEMCTL_CMD=$(command -v systemctl &>/dev/null)
 SERVICE_CMD=$(command -v service &>/dev/null)
@@ -68,21 +69,21 @@ check_sys() {
     # esac
     ## 判定Linux的发行版本
     if [ -f /etc/redhat-release ]; then
-        release="centos"
+        LinuxReleaseVersion="centos"
     elif cat /etc/issue | grep -Eqi "debian"; then
-        release="debian"
+        LinuxReleaseVersion="debian"
     elif cat /etc/issue | grep -Eqi "ubuntu"; then
-        release="ubuntu"
+        LinuxReleaseVersion="ubuntu"
     elif cat /etc/issue | grep -Eqi "centos|red hat|redhat"; then
-        release="centos"
+        LinuxReleaseVersion="centos"
     elif cat /proc/version | grep -Eqi "debian"; then
-        release="debian"
+        LinuxReleaseVersion="debian"
     elif cat /proc/version | grep -Eqi "ubuntu"; then
-        release="ubuntu"
+        LinuxReleaseVersion="ubuntu"
     elif cat /proc/version | grep -Eqi "centos|red hat|redhat"; then
-        release="centos"
+        LinuxReleaseVersion="centos"
     else
-        release=""
+        LinuxReleaseVersion=""
     fi
 
     # 检查系统包管理方式，更新包
@@ -316,15 +317,15 @@ changeTimeZoneAndNTP(){
 
 ## 为了本脚本能够满足Ubuntu系统，做出设当的更改
 commonToolInstall(){
-    colorEcho ${GREEN} "当前系统的发行版为${linuxRelease}！！"
-    colorEcho ${GREEN} "当前系统的发行版为${linuxRelease}！！"
-    colorEcho ${GREEN} "当前系统的发行版为${linuxRelease}！！"
+    colorEcho ${GREEN} "当前系统的发行版为-- ${LinuxReleaseVersion}！！"
+    colorEcho ${GREEN} "当前系统的发行版为-- ${LinuxReleaseVersion}！！"
+    colorEcho ${GREEN} "当前系统的发行版为-- ${LinuxReleaseVersion}！！"
 
-    if [[ ${linuxRelease} = "centos" ]]
+    if [[ ${LinuxReleaseVersion} = "centos" ]]
     then
         centosCommonTool=(deltarpm net-tools iputils bind-utils lsof curl wget)
         installDemandSoftwares ${centosCommonTool[@]} || return $?
-    elif [[ ${linuxRelease} = "ubuntu" ]] || [[ ${linuxRelease} = "debian" ]] 
+    elif [[ ${LinuxReleaseVersion} = "ubuntu" ]] || [[ ${LinuxReleaseVersion} = "debian" ]] 
     then
         ubuntuCommonTool=(iputils-ping net-tools dnsutils lsof curl wget mtr-tiny)
         installDemandSoftwares ${ubuntuCommonTool[@]} || return $?
@@ -343,7 +344,7 @@ main() {
     commonToolInstall
 
     # 安装docker，版本信息在本脚本的开头处修改~~
-    installDocker || return $?
+    #installDocker || return $?
     changeDockerRegisterMirror || return $?
 
     # installKubernetes
@@ -353,10 +354,8 @@ main() {
     installZSH || return $?
     # 使用chrony进行NTP时间同步
     # changeTimeSyncToNTP || return $?
-    
     # 使用timedatactl修改时间与时区
     changeTimeZoneAndNTP || return $?
 }
 
 main
-
