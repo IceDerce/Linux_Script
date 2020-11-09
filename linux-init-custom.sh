@@ -17,11 +17,12 @@ LinuxReleaseVersion=""
 SYSTEMCTL_CMD=$(command -v systemctl &>/dev/null)
 SERVICE_CMD=$(command -v service &>/dev/null)
 
-#######第一种方法########
-RED="31m"    # Error message
-GREEN="32m"  # Success message
-YELLOW="33m" # Warning message
-BLUE="36m"   # Info message
+
+RED="31m"      ## 姨妈红
+GREEN="32m"    ## 水鸭青
+YELLOW="33m"   ## 鸭屎黄
+PURPLE="35m"   ## 基佬紫
+BLUE="36m"     ## 天依蓝
 
 ######## 颜色函数方法很精妙 ############
 colorEcho() {
@@ -100,27 +101,28 @@ check_sys() {
         SOFTWARE_UPDATED=1
     fi
     return 0
+
+    # 判断系统的包管理工具  apt, yum, or zypper
+    getPackageManageTool() {
+        if [[ -n $(command -v apt-get) ]]; then
+            CMD_INSTALL="apt-get -y -qq install"
+            CMD_UPDATE="apt-get -qq update"
+            CMD_REMOVE="apt-get -y remove"
+        elif [[ -n $(command -v yum) ]]; then
+            CMD_INSTALL="yum -y -q install"
+            CMD_UPDATE="yum -q makecache"
+            CMD_REMOVE="yum -y remove"
+        elif [[ -n $(command -v zypper) ]]; then
+            CMD_INSTALL="zypper -y install"
+            CMD_UPDATE="zypper ref"
+            CMD_REMOVE="zypper -y remove"
+        else
+            return 1
+        fi
+        return 0
+    }
 }
 
-# 判断系统的包管理工具  apt, yum, or zypper
-getPackageManageTool() {
-    if [[ -n $(command -v apt-get) ]]; then
-        CMD_INSTALL="apt-get -y -qq install"
-        CMD_UPDATE="apt-get -qq update"
-        CMD_REMOVE="apt-get -y remove"
-    elif [[ -n $(command -v yum) ]]; then
-        CMD_INSTALL="yum -y -q install"
-        CMD_UPDATE="yum -q makecache"
-        CMD_REMOVE="yum -y remove"
-    elif [[ -n $(command -v zypper) ]]; then
-        CMD_INSTALL="zypper -y install"
-        CMD_UPDATE="zypper ref"
-        CMD_REMOVE="zypper -y remove"
-    else
-        return 1
-    fi
-    return 0
-}
 
 ##  安装所需要的程序，及依赖程序
 installDemandSoftwares() {
@@ -160,8 +162,8 @@ disableSwap() {
     cat /etc/fstab_bak | grep -v swap >/etc/fstab
 }
 
-## 安装kubernetes时，修改系统的配置文件
-modifySYSCTL() {
+## 安装docker时，修改系统的配置文件
+modifySystemConfig_Docker() {
 
      ## 配置内核参数
     cat >>/etc/sysctl.d/k8s.conf <<EOF
@@ -176,6 +178,30 @@ EOF
 
     ## 执行命令以应用
     sysctl -p /etc/sysctl.d/k8s.conf
+
+    systemctl daemon-reload
+    systemctl restart docker
+}
+
+## 安装kubernetes时，修改系统的配置文件
+modifySystemConfig_Kubernetes() {
+    if [ -f /etc/sysctl.d/k8s.conf ] 
+    then
+        colorEcho ${PURPLE} "系统配置的修改项已经存在了，现在跳过。。"
+    else
+        ## 配置内核参数
+        cat >>/etc/sysctl.d/k8s.conf <<EOF
+net.ipv4.ip_forward = 1
+net.bridge.bridge-nf-call-ip6tables = 1
+net.bridge.bridge-nf-call-iptables = 1
+net.ipv6.conf.all.disable_ipv6 = 1
+net.ipv6.conf.default.disable_ipv6 = 1
+net.ipv6.conf.lo.disable_ipv6 = 1
+net.ipv6.conf.all.forwarding = 1
+EOF
+         ## 执行命令以应用
+        sysctl -p /etc/sysctl.d/k8s.conf
+    fi
 
     ## 修改docker Cgroup Driver为systemd
     sed -i "s#^ExecStart=/usr/bin/dockerd.*#ExecStart=/usr/bin/dockerd -H fd:// --containerd=/run/containerd/containerd.sock --exec-opt native.cgroupdriver=systemd#g" /usr/lib/systemd/system/docker.service
@@ -345,11 +371,12 @@ main() {
 
     # 安装docker，版本信息在本脚本的开头处修改~~
     installDocker || return $?
+    modifySystemConfig_Docker
     changeDockerRegisterMirror || return $?
 
     # installKubernetes
     # installDockerCompose || return $?
-    # modifySYSCTL
+    # modifySystemConfig_Kubernetes
     
     installZSH || return $?
     # 使用chrony进行NTP时间同步
