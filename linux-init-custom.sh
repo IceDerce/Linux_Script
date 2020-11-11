@@ -347,11 +347,11 @@ commonToolInstall(){
     colorEcho ${GREEN} "当前系统的发行版为-- ${LinuxReleaseVersion}！！"
     colorEcho ${GREEN} "当前系统的发行版为-- ${LinuxReleaseVersion}！！"
 
-    if [[ ${LinuxReleaseVersion} = "centos" ]]
+    if [[ ${LinuxReleaseVersion} == "centos" ]]
     then
         centosCommonTool=(deltarpm net-tools iputils bind-utils lsof curl wget)
         installDemandSoftwares ${centosCommonTool[@]} || return $?
-    elif [[ ${LinuxReleaseVersion} = "ubuntu" ]] || [[ ${LinuxReleaseVersion} = "debian" ]] 
+    elif [[ ${LinuxReleaseVersion} == "ubuntu" ]] || [[ ${LinuxReleaseVersion} == "debian" ]] 
     then
         ubuntuCommonTool=(iputils-ping net-tools dnsutils lsof curl wget mtr-tiny)
         installDemandSoftwares ${ubuntuCommonTool[@]} || return $?
