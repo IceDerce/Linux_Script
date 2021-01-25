@@ -13,7 +13,7 @@ SERVICE_CMD=$(command -v service &>/dev/null)
 sshConfigFile="/etc/ssh/sshd_config"
 
 ### SSH的登录端口修改
-SSHLoginPort="10000"
+SSHLoginPort="22333"
 
 ## 下面的应该被改成yes
 PermitRootLogin="PermitRootLogin"
@@ -143,10 +143,10 @@ changeSSHLoginPort(){
     then
         colorEcho ${BLUE} "当前的ssh登录端口已经为${SSHLoginPort}，无需修改！"
     else
-        sed -i '/^#Port 22/a Port 10000' $sshConfigFile
+        sed -i "/^#Port 22/a Port ${SSHLoginPort}" $sshConfigFile
         if [[ $? -eq 0 ]] 
         then
-            colorEcho ${GREEN} "ssh的登陆端口已被修改为10000，请修改防火墙以开放该端口！！"
+            colorEcho ${GREEN} "ssh的登陆端口已被修改为${SSHLoginPort}，请修改防火墙以开放该端口！！"
         fi
     fi
 }
