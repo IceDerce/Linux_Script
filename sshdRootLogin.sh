@@ -13,7 +13,7 @@ SERVICE_CMD=$(command -v service &>/dev/null)
 sshConfigFile="/etc/ssh/sshd_config"
 
 ### SSH的登录端口修改
-SSHLoginPort="22333"
+SSHLoginPort="10000"
 
 ## 下面的应该被改成yes
 PermitRootLogin="PermitRootLogin"
@@ -111,6 +111,8 @@ modify_sshd_config(){
     #  以数组的方式 将参数传入函数
     modify_sshd_config_yes "${needToChangeYes[@]}"
     modify_sshd_config_no "${needToChangeNo[@]}"
+
+    colorEcho $GREEN "SSHD文件已经修改成功。。。"
 }
 
 restartSSHDService(){
@@ -121,6 +123,7 @@ restartSSHDService(){
             colorEcho ${GREEN} "sshd文件已经修改成功，可以进行root登录，请修改root密码~~"
         else 
             colorEcho ${RED} "sshd服务重启失败，请检查原因!!!"
+            colorEcho ${RED} "如果是CentOS，大概率是防火墙的问题。"
         fi
     }
 
@@ -151,6 +154,27 @@ changeSSHLoginPort(){
     fi
 }
 
+extendIntervalTime(){
+    echo "ClientAliveInterval 30" >> /etc/ssh/sshd_config
+    echo "ClientAliveCountMax 60" >> /etc/ssh/sshd_config
+}
+
+modify_firewall(){
+  echo ""
+  colorEcho $GREEN "本脚本会默认关闭防火墙和SElinux！！"
+  colorEcho $GREEN "本脚本会默认关闭防火墙和SElinux！！"
+  colorEcho $GREEN "本脚本会默认关闭防火墙和SElinux！！"
+
+  systemctl stop firewalld
+  systemctl disable firewalld
+  systemctl stop ufw
+  systemctl disable ufw
+
+  setenforce 0
+  sed -i "s/SELINUX=enforcing/SELINUX=disabled/g" /etc/selinux/config
+#  iptables -F
+}
+
 main(){
     # 首先检查是否拥有root权限
     check_root
@@ -163,6 +187,12 @@ main(){
 
     # 增加访问端口改变
     changeSSHLoginPort
+
+    # 修改ssh的连接中断延时
+    extendIntervalTime
+
+    # 关闭防火墙服务，否则无法重启sshd服务
+    modify_firewall
 
     # 重启SSHD服务
     restartSSHDService    
