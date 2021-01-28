@@ -14,9 +14,6 @@ CMD_REMOVE=""
 SOFTWARE_UPDATED=0
 LinuxReleaseVersion=""
 
-SYSTEMCTL_CMD=$(command -v systemctl &>/dev/null)
-SERVICE_CMD=$(command -v service &>/dev/null)
-
 
 RED="31m"      ## 姨妈红
 GREEN="32m"    ## 水鸭青
@@ -87,21 +84,6 @@ check_sys() {
         LinuxReleaseVersion=""
     fi
 
-    # 检查系统包管理方式，更新包
-    getPackageManageTool
-    if [[ $? -eq 1 ]]; then
-        colorEcho ${RED} "系统的包管理不是 APT or YUM, 请手动安装所需要的软件."
-        return 1
-    fi
-
-    ### 更新程序引索
-    if [[ $SOFTWARE_UPDATED -eq 0 ]]; then
-        colorEcho ${BLUE} "正在更新软件包管理..."
-        $CMD_UPDATE
-        SOFTWARE_UPDATED=1
-    fi
-    return 0
-
     # 判断系统的包管理工具  apt, yum, or zypper
     getPackageManageTool() {
         if [[ -n $(command -v apt-get) ]]; then
@@ -121,6 +103,21 @@ check_sys() {
         fi
         return 0
     }
+
+    # 检查系统包管理方式，更新包
+    getPackageManageTool
+    if [[ $? -eq 1 ]]; then
+        colorEcho ${RED} "系统的包管理不是 APT or YUM, 请手动安装所需要的软件."
+        return 1
+    fi
+
+    ### 更新程序引索
+    if [[ $SOFTWARE_UPDATED -eq 0 ]]; then
+        colorEcho ${BLUE} "正在更新软件包管理..."
+        $CMD_UPDATE
+        SOFTWARE_UPDATED=1
+    fi
+    return 0
 }
 
 
@@ -158,7 +155,7 @@ shutdownFirewall() {
 
 disableSwap() {
     swapoff -a
-    yes | cp /etc/fstab /etc/fstab_bak
+    cp -f /etc/fstab /etc/fstab_bak
     cat /etc/fstab_bak | grep -v swap >/etc/fstab
 }
 
@@ -213,24 +210,43 @@ EOF
 
 installDocker() {
     ### 国内的环境 ###
+    ### 依赖colorEcho
 
     ## 清理docker环境
     $CMD_REMOVE docker docker-client docker-client-latest docker-ce-cli \
         docker-common docker-latest docker-latest-logrotate docker-logrotate docker-selinux docker-engine-selinux \
         docker-engine kubelet kubeadm kubectl
 
-    ## 安装docker的依赖
-    installDemandSoftwares yum-utils device-mapper-persistent-data lvm2 || return $?
-    
-    ## 添加docker的yum源
-    yum-config-manager --add-repo https://mirrors.ustc.edu.cn/docker-ce/linux/centos/docker-ce.repo
-    if [[ -f /etc/yum.repos.d/docker-ce.repo ]] 
-    then
-        sed -i 's/download.docker.com/mirrors.ustc.edu.cn\/docker-ce/g' /etc/yum.repos.d/docker-ce.repo
+    if [ $LinuxReleaseVersion = "centos" ]; then
+        ## 安装docker的依赖
+      installDemandSoftwares yum-utils device-mapper-persistent-data lvm2 || return $?
+
+      ## 添加docker的yum源
+      yum-config-manager --add-repo https://mirrors.ustc.edu.cn/docker-ce/linux/centos/docker-ce.repo
+      if [[ -f /etc/yum.repos.d/docker-ce.repo ]]
+      then
+          sed -i 's/download.docker.com/mirrors.ustc.edu.cn\/docker-ce/g' /etc/yum.repos.d/docker-ce.repo
+          colorEcho $GREEN "已成功添加中科大的docker-ce的yum源！"
+          echo ""
+
+          colorEcho $GREEN "可以安装的docker-ce的19.03版本为："
+          yum list docker-ce --showduplicates | grep -w 19.03 | sort -r | awk '{print$2}' | cut -d ":" -f2
+          echo ""
+      else
+          colorEcho ${RED} "docker的yum源添加失败，请手动添加"
+      fi
     else
-        colorEcho ${RED} "docker的yum源添加失败，请手动添加"
+      $CMD_INSTALL  apt-transport-https ca-certificates curl gnupg-agent software-properties-common
+
+      curl -fsSL https://mirrors.ustc.edu.cn/docker-ce/linux/ubuntu/gpg | sudo apt-key add -
+      add-apt-repository \
+      "deb [arch=amd64] https://mirrors.ustc.edu.cn/docker-ce/linux/ubuntu \
+      $(lsb_release -cs) \
+      stable"
+
+      colorEcho ${GREEN} "开始安装docker-ce，版本为${DOCKER_VERSION}"
+      apt-get update
     fi
-    
 
     installDemandSoftwares docker-ce-${DOCKER_VERSION} docker-ce-cli-${DOCKER_VERSION} containerd.io || return $?
 
@@ -239,22 +255,24 @@ installDocker() {
 }
 
 installDockerCompose(){
-    curl -L "https://github.com/docker/compose/releases/download/1.27.4/docker-compose-$(uname -s)-$(uname -m)" \
-        -o /usr/local/bin/docker-compose
-
+    colorEcho ${PURPLE} "正在下载 +++++++++++++ docker-compose文件 ++++++++++++++"
+    curl -L "https://github.com.cnpmjs.org/docker/compose/releases/download/1.27.4/docker-compose-$(uname -s)-$(uname -m)" \
+       -o /usr/local/bin/docker-compose
     if [[ -a /usr/local/bin/docker-compose ]] 
     then
         colorEcho ${BLUE} "docker-compose文件下载成功！！"
+        echo ""
         chmod +x /usr/local/bin/docker-compose
         docker-compose --version &> /dev/null
         if [[ $? -eq 0 ]] 
         then
-            colorEcho ${GREEN} "docker-compose安装成功！！版本为`docker-compose --version`"
+            colorEcho ${GREEN} "docker-compose安装成功！！版本为$(docker-compose --version | cut -d" " -f3)尽情享用"
         else
             ln -s /usr/local/bin/docker-compose /usr/bin/docker-compose
         fi
     else
         colorEcho ${RED} "docker-compose文件下载失败！！ 无法访问github的资源。。"
+        colorEcho ${RED} "请手动下载docker-compose的安装文件！"
     fi
 }
 
@@ -279,12 +297,12 @@ installZSH(){
     installDemandSoftwares zsh git || return $?
     # 脚本会自动更换默认的shell
     echo y | sh -c "$(curl -fsSL https://cdn.jsdelivr.net/gh/robbyrussell/oh-my-zsh@master/tools/install.sh)"
-
     if [[ $? -eq 0 ]]; then
+        zsh
         chsh -s /bin/zsh
         sed -i "s/robbyrussell/agnoster/g" ~/.zshrc
         sed -i 's/^# DISABLE_AUTO_UPDATE="true"/DISABLE_AUTO_UPDATE="true"/g' ~/.zshrc
-        source ~/.zshrc
+        source /root/.zshrc
         colorEcho ${GREEN} "zsh 安装成功，已更换主题，禁止更新，尽情享用~~~"
     else
         colorEcho ${RED} "zsh 安装失败，请手动安装！！"
@@ -309,12 +327,38 @@ changeDockerRegisterMirror(){
         mv /etc/docker/daemon.json /etc/docker/daemon.backup.json
         colorEcho ${GREEN} "已经将daemeon文件备份" 
     fi
+    #echo "192.168.35.25 aiboxhb.cdcyy.cn" >>/etc/hosts
     cat >> /etc/docker/daemon.json <<EOF
 {
-  "registry-mirrors": ["https://jxlws3de.mirror.aliyuncs.com/",
+  "log-driver": "json-file",
+  "log-opts": {
+    "max-size": "100m"
+  },
+  "default-ulimits": {
+    "nofile": {
+      "Name": "nofile",
+      "Hard": 655360,
+      "Soft": 655360
+    },
+    "nproc": {
+      "Name": "nproc",
+      "Hard": 655360,
+      "Soft": 655360
+    }
+  },
+  "live-restore": true,
+  "max-concurrent-downloads": 10,
+  "max-concurrent-uploads": 10,
+  "storage-driver": "overlay2",
+  "storage-opts": [
+    "overlay2.override_kernel_check=true"
+  ],
+  "registry-mirrors": [
+        "https://jxlws3de.mirror.aliyuncs.com",
         "https://docker.mirrors.ustc.edu.cn",
         "http://hub-mirror.c.163.com",
-        "https://registry.docker-cn.com"]
+        "https://registry.docker-cn.com"
+  ]
 }
 EOF
     systemctl restart docker.service
@@ -329,15 +373,15 @@ changeTimeSyncToNTP(){
     systemctl enable chronyd && systemctl start chronyd
     if [[ $? -eq 0 ]] 
     then
-        colorEcho ${GREEN} "NTP时间同步安装完成，时间为`date`"
+        colorEcho ${GREEN} "NTP时间同步安装完成，时间为$(date -R)"
     fi
 }
 
 changeTimeZoneAndNTP(){
-    if [[ `command -v timedatectl &>/dev/null` ]] 
+    if [[ -n $(command -v timedatectl) ]]
     then
         timedatectl set-timezone Asia/Shanghai && timedatectl set-ntp true
-        colorEcho ${GREEN} "同步时间完成。现在时间为 `date -R`"
+        colorEcho ${GREEN} "同步时间完成。现在时间为 $(date -R)"
     fi
 }
 
@@ -349,11 +393,11 @@ commonToolInstall(){
 
     if [[ ${LinuxReleaseVersion} == "centos" ]]
     then
-        centosCommonTool=(deltarpm net-tools iputils bind-utils lsof curl wget)
+        centosCommonTool=(deltarpm net-tools iputils bind-utils lsof curl wget vim mtr)
         installDemandSoftwares ${centosCommonTool[@]} || return $?
     elif [[ ${LinuxReleaseVersion} == "ubuntu" ]] || [[ ${LinuxReleaseVersion} == "debian" ]] 
     then
-        ubuntuCommonTool=(iputils-ping net-tools dnsutils lsof curl wget mtr-tiny)
+        ubuntuCommonTool=(iputils-ping net-tools dnsutils lsof curl wget mtr-tiny vim)
         installDemandSoftwares ${ubuntuCommonTool[@]} || return $?
     fi
 }
@@ -363,7 +407,7 @@ main() {
     check_sys
     shutdownFirewall
 
-    # 关闭虚拟缓存
+    # 关闭虚拟缓存，k8s安装的时候才需要
     # disableSwap
 
     # 安装一些常用的小工具
@@ -371,11 +415,12 @@ main() {
 
     # 安装docker，版本信息在本脚本的开头处修改~~
     installDocker || return $?
+    installDockerCompose
     modifySystemConfig_Docker
     changeDockerRegisterMirror || return $?
 
+    # 安装kubernetes，版本信息在本脚本的开头处修改~~
     # installKubernetes
-    # installDockerCompose || return $?
     # modifySystemConfig_Kubernetes
     
     installZSH || return $?
