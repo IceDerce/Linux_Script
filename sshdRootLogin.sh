@@ -13,7 +13,7 @@ SERVICE_CMD=$(command -v service &>/dev/null)
 sshConfigFile="/etc/ssh/sshd_config"
 
 ### SSH的登录端口修改
-SSHLoginPort="10000"
+SSHLoginPort="22333"
 
 ## 下面的应该被改成yes
 PermitRootLogin="PermitRootLogin"
